@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Photo Upscaler</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #4f46e5, #9333ea, #2563eb);
+      background-size: 400% 400%;
+      animation: gradientMove 12s ease infinite;
+      font-family: 'Inter', sans-serif;
+    }
+    @keyframes gradientMove {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-between text-white px-4">
+
+  <div class="flex flex-col items-center w-full flex-1">
+    <!-- Header -->
+    <h1 class="text-4xl font-extrabold mb-8 drop-shadow-lg flex items-center gap-2 mt-8">
+      <i data-lucide="image-up" class="w-10 h-10"></i>
+      AI Photo Upscaler
+    </h1>
+
+    <!-- Tools Menu -->
+    <div class="flex gap-4 mb-8" id="tools-menu">
+      <button id="upscale-menu" class="tool-btn bg-indigo-500 px-6 py-3 rounded-xl flex items-center gap-2 transition">
+        <i data-lucide="wand-2" class="w-5 h-5"></i>
+        <span>Upscaler</span>
+      </button>
+      <button id="removebg-menu" class="tool-btn bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl flex items-center gap-2 transition">
+        <i data-lucide="scissors" class="w-5 h-5"></i>
+        <span>Remove BG</span>
+      </button>
+      <button id="coming-soon-menu" class="tool-btn bg-white/5 px-6 py-3 rounded-xl flex items-center gap-2 opacity-50 cursor-not-allowed">
+        <i data-lucide="sparkles" class="w-5 h-5"></i>
+        <span>Coming Soon</span>
+      </button>
+    </div>
+
+    <!-- Upload & URL input -->
+    <div class="bg-white/10 backdrop-blur-md p-6 rounded-2xl w-full max-w-md shadow-lg space-y-4 mb-8">
+      <label class="flex items-center gap-2 cursor-pointer bg-white/20 px-4 py-3 rounded-xl hover:bg-white/30 transition">
+        <i data-lucide="upload" class="w-5 h-5"></i>
+        <span id="file-label">Upload Photo</span>
+        <input type="file" id="file-input" accept="image/*" class="hidden">
+      </label>
+
+      <div class="flex items-center gap-2 bg-white/20 px-4 py-3 rounded-xl">
+        <i data-lucide="link" class="w-5 h-5"></i>
+        <input id="url-input" type="text" placeholder="Paste image URL..." 
+               class="w-full bg-transparent outline-none text-white placeholder-white/70">
+      </div>
+
+      <div class="flex gap-2">
+        <button id="process-btn" 
+          class="flex-1 bg-indigo-500 hover:bg-indigo-600 px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition">
+          <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+          <span>Process</span>
+        </button>
+        <button id="refresh-btn" 
+          class="bg-red-500 hover:bg-red-600 px-4 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition">
+          <i data-lucide="refresh-ccw" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="result" class="mt-10 w-full max-w-3xl hidden">
+      <h2 class="text-2xl font-bold mb-4">Before & After</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h3 class="font-semibold mb-2">Before</h3>
+          <img id="before-img" class="rounded-xl shadow-lg w-full">
+        </div>
+        <div class="flex flex-col items-center">
+          <h3 class="font-semibold mb-2">After</h3>
+          <img id="after-img" class="rounded-xl shadow-lg w-full">
+          <button id="download-btn" 
+            class="mt-4 bg-green-500 hover:bg-green-600 px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition">
+            <i data-lucide="download" class="w-5 h-5"></i>
+            <span>Download</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="w-full text-center py-4 mt-8">
+    <p class="text-white/70 text-sm">&copy; 2025 Viewtech. All rights reserved.</p>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+
+    const fileInput = document.getElementById("file-input");
+    const fileLabel = document.getElementById("file-label");
+    const urlInput = document.getElementById("url-input");
+    const processBtn = document.getElementById("process-btn");
+    const refreshBtn = document.getElementById("refresh-btn");
+    const resultDiv = document.getElementById("result");
+    const beforeImg = document.getElementById("before-img");
+    const afterImg = document.getElementById("after-img");
+    const downloadBtn = document.getElementById("download-btn");
+    const upscaleMenu = document.getElementById("upscale-menu");
+    const removebgMenu = document.getElementById("removebg-menu");
+    const comingSoonMenu = document.getElementById("coming-soon-menu");
+    const toolButtons = document.querySelectorAll(".tool-btn");
+
+    let uploadedFile = null;
+    let outputUrl = null;
+    let mode = "upscale"; // default mode
+
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files.length > 0) {
+        uploadedFile = fileInput.files[0];
+        fileLabel.textContent = uploadedFile.name;
+      }
+    });
+
+    // Highlight active tool
+    function setActiveTool(activeBtn) {
+      toolButtons.forEach(btn => {
+        if (btn === activeBtn) {
+          btn.classList.remove("bg-white/10","hover:bg-white/20");
+          btn.classList.add("bg-indigo-500");
+        } else {
+          if (!btn.disabled) {
+            btn.classList.remove("bg-indigo-500");
+            btn.classList.add("bg-white/10","hover:bg-white/20");
+          }
+        }
+      });
+    }
+
+    upscaleMenu.addEventListener("click", () => { mode = "upscale"; setActiveTool(upscaleMenu); });
+    removebgMenu.addEventListener("click", () => { mode = "removebg"; setActiveTool(removebgMenu); });
+    comingSoonMenu.addEventListener("click", () => { alert("Coming Soon!"); setActiveTool(comingSoonMenu); });
+
+    processBtn.addEventListener("click", async () => {
+      let query = urlInput.value.trim();
+      if (!query && !uploadedFile) { alert("Please upload a photo or paste a link."); return; }
+
+      if (uploadedFile) {
+        await sendRequest(null, URL.createObjectURL(uploadedFile), true);
+      } else {
+        await sendRequest(query, query, false);
+      }
+    });
+
+    async function sendRequest(query, previewUrl, isFile = false) {
+      processBtn.disabled = true;
+      processBtn.innerHTML = `<i data-lucide="loader" class="animate-spin w-5 h-5"></i> Processing...`;
+      lucide.createIcons();
+
+      try {
+        let res;
+        if (mode === "upscale") {
+          if (isFile) {
+            const formData = new FormData();
+            formData.append("image", uploadedFile);
+            res = await fetch("/api/upscale", { method: "POST", body: formData });
+          } else {
+            res = await fetch("/api/upscale", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: query }) });
+          }
+          const data = await res.json();
+          if (data.image) { outputUrl = data.image; } else { alert("Upscale failed: " + (data.error || "Unknown error")); return; }
+        } else if (mode === "removebg") {
+          if (isFile) {
+            const formData = new FormData();
+            formData.append("image", uploadedFile);
+            res = await fetch("/api/removebg", { method: "POST", body: formData });
+          } else {
+            res = await fetch("/api/removebg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: query }) });
+          }
+          if (res.status === 200) {
+            const blob = await res.blob();
+            outputUrl = URL.createObjectURL(blob);
+          } else {
+            const data = await res.json();
+            alert("Remove BG failed: " + (data.error || "Unknown error"));
+            return;
+          }
+        }
+
+        beforeImg.src = previewUrl;
+        afterImg.src = outputUrl;
+        resultDiv.classList.remove("hidden");
+
+        // Reset input
+        uploadedFile = null;
+        fileInput.value = "";
+        fileLabel.textContent = "Upload Photo";
+        urlInput.value = "";
+
+        // Reset highlight otomatis ke default (Upscaler) setelah 3 detik
+        setTimeout(() => { mode = "upscale"; setActiveTool(upscaleMenu); }, 3000);
+
+      } catch (e) { alert("Error: " + e.message); }
+      finally {
+        processBtn.disabled = false;
+        processBtn.innerHTML = `<i data-lucide="upload-cloud" class="w-5 h-5"></i> <span>Process</span>`;
+        lucide.createIcons();
+      }
+    }
+
+    downloadBtn.addEventListener("click", () => {
+      if (outputUrl) {
+        const link = document.createElement("a");
+        link.href = outputUrl;
+        link.download = mode === "upscale" ? "upscaled.png" : "removed-bg.png";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    });
+
+    refreshBtn.addEventListener("click", () => { window.location.reload(); });
+  </script>
+</body>
+</html>
