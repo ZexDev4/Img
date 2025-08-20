@@ -9,6 +9,27 @@ CORS(app)
 
 PIXELCUT_URL = "https://api2.pixelcut.app"
 
+def lahelu(q: str):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:142.0) Gecko/20100101 Firefox/142.0',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'id,en-US;q=0.7,en;q=0.3',
+        'Connection': 'keep-alive',
+    }
+    response = requests.get(q, headers=headers)
+    list = {'data': []}
+    for _ in response.json()['postInfos']:
+        judul, media, type = _['title'], _['media'], _['media'].rsplit(".", 1)[-1]
+        list['data'].append({
+            'title': judul,
+            'media': media,
+            'type': type
+        })
+    if 'nextCursor' in response.text:
+        next = response.json()['nextCursor']
+        list.update({'next': next})
+    return list
+    
 
 @app.route("/")
 def index():
@@ -142,6 +163,25 @@ def removebg():
     except Exception as e:
         return jsonify({"error": "Terjadi error internal", "details": str(e)}), 500
 
+@app.route("/api/meme", methods=["GET"])
+def search():
+    qsrch = request.args.get('q')
+    next  = request.args.get('n')
+
+    if qsrch and not next:
+        # pencarian pertama
+        url = f'https://lahelu.com/api/post/get-search?query={qsrch}'
+    elif qsrch and next:
+        # pagination dengan query + cursor
+        url = f'https://lahelu.com/api/post/get-search?query={qsrch}&cursor={next}'
+
+    else:
+        return jsonify({
+            "status": False,
+            "message": "Tidak ada parameter"
+        }), 400
+    result = lahelu(url)
+    return jsonify(result)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
