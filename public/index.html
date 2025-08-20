@@ -197,6 +197,10 @@
           <i data-lucide="scissors" class="w-5 h-5"></i>
           <span>Remove BG</span>
         </button>
+        <button id="meme-menu" class="tool-btn bg-gray-100 hover:bg-gray-200 flex items-center justify-center gap-2 transition">
+          <i data-lucide="search" class="w-5 h-5"></i>
+          <span>Meme Search</span>
+        </button>
         <button id="coming-soon-menu" class="tool-btn bg-gray-50 flex items-center justify-center gap-2 opacity-50 cursor-not-allowed">
           <i data-lucide="sparkles" class="w-5 h-5"></i>
           <span>Coming Soon</span>
@@ -218,7 +222,7 @@
     </div>
     <!-- Upload & URL input -->
     <div class="bg-gray-100 backdrop-blur-md p-6 rounded-2xl w-full max-w-md shadow-lg space-y-4 mb-8"> <!-- Adjusted for light theme -->
-      <label class="flex items-center gap-2 cursor-pointer bg-gray-200 px-4 py-3 rounded-xl hover:bg-gray-300 transition">
+      <label id="upload-label" class="flex items-center gap-2 cursor-pointer bg-gray-200 px-4 py-3 rounded-xl hover:bg-gray-300 transition">
         <i data-lucide="upload" class="w-5 h-5"></i>
         <span id="file-label">Upload Photo</span>
         <input type="file" id="file-input" accept="image/*" class="hidden">
@@ -259,6 +263,13 @@
         </div>
       </div>
     </div>
+    <!-- Meme Results -->
+    <div id="meme-results" class="mt-10 w-full max-w-3xl hidden">
+      <h2 class="text-2xl font-bold mb-4">Meme Results</h2>
+      <div id="meme-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+      </div>
+      <div id="more-container" class="flex justify-center mt-4"></div>
+    </div>
   </div>
   <!-- Animated Waves Container -->
   <div class="waves">
@@ -283,18 +294,25 @@
     const downloadBtn = document.getElementById("download-btn");
     const upscaleMenu = document.getElementById("upscale-menu");
     const removebgMenu = document.getElementById("removebg-menu");
+    const memeMenu = document.getElementById("meme-menu");
     const comingSoonMenu = document.getElementById("coming-soon-menu");
     const toolButtons = document.querySelectorAll(".tool-btn");
+    const uploadLabel = document.getElementById("upload-label");
+    const memeResults = document.getElementById("meme-results");
+    const memeGrid = document.getElementById("meme-grid");
+    const moreContainer = document.getElementById("more-container");
     let uploadedFile = null;
     let outputUrl = null;
     let mode = "upscale"; // default mode
+    let currentQuery = '';
+    let nextCursor = null;
     fileInput.addEventListener("change", () => {
       if (fileInput.files.length > 0) {
         uploadedFile = fileInput.files[0];
         fileLabel.textContent = uploadedFile.name;
       }
     });
-    // Highlight active tool
+    // Highlight active tool and update UI
     function setActiveTool(activeBtn) {
       toolButtons.forEach(btn => {
         if (btn === activeBtn) {
@@ -307,19 +325,121 @@
           }
         }
       });
+      updateUIForMode();
+    }
+    // Update UI based on mode
+    function updateUIForMode() {
+      if (mode === "meme") {
+        uploadLabel.classList.add("hidden");
+        urlInput.placeholder = "Search for memes...";
+        processBtn.querySelector('span').textContent = "Search";
+        resultDiv.classList.add("hidden");
+      } else {
+        uploadLabel.classList.remove("hidden");
+        urlInput.placeholder = "Paste image URL...";
+        processBtn.querySelector('span').textContent = "Process";
+        memeResults.classList.add("hidden");
+      }
     }
     upscaleMenu.addEventListener("click", () => { mode = "upscale"; setActiveTool(upscaleMenu); });
     removebgMenu.addEventListener("click", () => { mode = "removebg"; setActiveTool(removebgMenu); });
+    memeMenu.addEventListener("click", () => { mode = "meme"; setActiveTool(memeMenu); });
     comingSoonMenu.addEventListener("click", () => { alert("Coming Soon!"); setActiveTool(comingSoonMenu); });
     processBtn.addEventListener("click", async () => {
       let query = urlInput.value.trim();
-      if (!query && !uploadedFile) { alert("Please upload a photo or paste a link."); return; }
-      if (uploadedFile) {
-        await sendRequest(null, URL.createObjectURL(uploadedFile), true);
+      if (mode === "meme") {
+        if (!query) { alert("Please enter a search query."); return; }
+        await handleMemeSearch(query);
       } else {
-        await sendRequest(query, query, false);
+        memeResults.classList.add("hidden");
+        if (!query && !uploadedFile) { alert("Please upload a photo or paste a link."); return; }
+        if (uploadedFile) {
+          await sendRequest(null, URL.createObjectURL(uploadedFile), true);
+        } else {
+          await sendRequest(query, query, false);
+        }
       }
     });
+    async function handleMemeSearch(q, append = false) {
+      processBtn.disabled = true;
+      processBtn.innerHTML = `<i data-lucide="loader" class="animate-spin w-5 h-5"></i> Searching...`;
+      lucide.createIcons();
+      try {
+        currentQuery = q;
+        let url = `/api/meme?q=${encodeURIComponent(q)}`;
+        if (append && nextCursor) {
+          url += `&n=${nextCursor}`;
+        }
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!append) {
+          memeGrid.innerHTML = '';
+          moreContainer.innerHTML = '';
+        }
+        displayMemes(data.data, append);
+        nextCursor = data.next || null;
+        if (nextCursor) {
+          const moreBtn = document.createElement('button');
+          moreBtn.className = 'bg-indigo-500 hover:bg-indigo-600 px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition text-white';
+          moreBtn.innerHTML = `<i data-lucide="more-horizontal" class="w-5 h-5"></i> More`;
+          moreBtn.addEventListener('click', async () => {
+            moreBtn.disabled = true;
+            moreBtn.innerHTML = `<i data-lucide="loader" class="animate-spin w-5 h-5"></i> Loading...`;
+            lucide.createIcons();
+            await handleMemeSearch(currentQuery, true);
+            moreBtn.disabled = false;
+            moreBtn.innerHTML = `<i data-lucide="more-horizontal" class="w-5 h-5"></i> More`;
+          });
+          moreContainer.appendChild(moreBtn);
+        }
+        memeResults.classList.remove("hidden");
+        // Reset input if not appending
+        if (!append) {
+          urlInput.value = "";
+        }
+      } catch (e) {
+        alert("Error: " + e.message);
+      } finally {
+        processBtn.disabled = false;
+        processBtn.innerHTML = `<i data-lucide="upload-cloud" class="w-5 h-5"></i> <span>Search</span>`;
+        lucide.createIcons();
+      }
+    }
+    function displayMemes(memes, append = false) {
+      if (!append) {
+        memeGrid.innerHTML = '';
+      }
+      memes.forEach(m => {
+        const card = document.createElement('div');
+        card.className = 'bg-gray-100 p-4 rounded-xl shadow-lg flex flex-col items-center';
+        const mediaType = m.type.toLowerCase();
+        let mediaElement = '';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(mediaType)) {
+          mediaElement = `<img src="${m.media}" alt="${m.title}" class="w-full h-auto rounded-lg mb-2">`;
+        } else if (mediaType === 'mp4') {
+          mediaElement = `<video src="${m.media}" controls class="w-full h-auto rounded-lg mb-2"></video>`;
+        } else {
+          mediaElement = `<p>Unsupported media type: ${m.type}</p>`;
+        }
+        card.innerHTML = `
+          <h3 class="font-semibold mb-2 text-center">${m.title}</h3>
+          ${mediaElement}
+          <button class="download-meme bg-green-500 hover:bg-green-600 px-4 py-2 rounded-lg font-semibold text-white w-full flex items-center justify-center gap-2 transition">
+            <i data-lucide="download" class="w-5 h-5"></i> Download
+          </button>
+        `;
+        lucide.createIcons();
+        card.querySelector('.download-meme').addEventListener('click', () => {
+          const link = document.createElement("a");
+          link.href = m.media;
+          link.download = `${m.title}.${m.type}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+        memeGrid.appendChild(card);
+      });
+    }
     async function sendRequest(query, previewUrl, isFile = false) {
       processBtn.disabled = true;
       processBtn.innerHTML = `<i data-lucide="loader" class="animate-spin w-5 h-5"></i> Processing...`;
@@ -381,7 +501,8 @@
       }
     });
     refreshBtn.addEventListener("click", () => { window.location.reload(); });
+    // Initial UI setup
+    updateUIForMode();
   </script>
 </body>
 </html>
-
